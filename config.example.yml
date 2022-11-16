@@ -1,0 +1,14 @@
+bot:
+    token: "XXX"
+    developer_chat_id: "XXX"
+
+forecast_service:
+  # api-endpoint url
+  url: "https://www.agrar.basf.de/api/weather/weatherDetails"
+  # location: latitude
+  latitude: 53.639656
+  # location: longitude
+  longitude: 9.594956
+
+grid_inverter_service:
+  

@@ -23,6 +23,9 @@ References:
 import argparse
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
+
+import confuse
 
 from power_plant_monitoring import __version__
 
