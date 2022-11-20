@@ -3,6 +3,12 @@ influxdb:
     org: "home"
     url: "http://192.168.178.27:8086/"
 
+growatt:
+    interval_sec: 1
+    offline_interval_sec: 60
+    error_interval_sec: 60
+    port : "/dev/ttyUSB0"
+
 forecast_service:
   # api-endpoint url
   url: "https://www.agrar.basf.de/api/weather/weatherDetails"

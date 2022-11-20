@@ -22,7 +22,7 @@ References:
 
 import argparse
 import logging
-import sys, os
+import sys, os, time
 from logging.handlers import RotatingFileHandler
 
 import confuse
@@ -30,6 +30,10 @@ import confuse
 import influxdb_client, os, time
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
+
+from pymodbus.client.sync import ModbusSerialClient as ModbusClient
+
+from growatt import Growatt
 
 from power_plant_monitoring import __version__
 
@@ -131,28 +135,44 @@ def main(args):
     config = confuse.Configuration("harvester", __name__)
     config.set_file(filename)
 
+    interval = config["growatt"]["interval_sec"].get(int)
+    offline_interval = config["growatt"]["offline_interval_sec"].get(int)
+    error_interval = config["growatt"]["error_interval_sec"].get(int)
+
+    port = config["growatt"]["port"].get(str)
+    _logger.debug(f"Growatt (Port): {port}")
+    client = ModbusClient(method='rtu', port=port, baudrate=9600, stopbits=1, parity='N', bytesize=8, timeout=1)
+    client.connect()
+
+    growatt = Growatt(client, "Growatt", 1)
+
+    _logger.debug(f"Growatt connected.")
+
     url = config["influxdb"]["url"].get(str)
     org = config["influxdb"]["org"].get(str)
     token = config["influxdb"]["token"].get(str)
 
     _logger.debug(f"InfluxDB: {url}, Organization: {org}")
-
-    client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
+    influx = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
+    _logger.debug(f"InfluxDB client created.")
 
     bucket="monitoring"
 
-    write_api = client.write_api(write_options=SYNCHRONOUS)
-   
-    for value in range(50):
-        point = (
-            Point("measurement1")
-            .tag("tagname1", "tagvalue1")
-            .field("field1", value)
-        )
-        write_api.write(bucket=bucket, org="home", record=point)
-        time.sleep(1) # separate points by 1 second
+    info = growatt.read()
 
+    now = time.time()
 
+    points = [{
+                'time': int(now),
+                'measurement': 'growatt',
+                "fields": info
+            }]
+    
+    bucket="monitoring"
+    write_api = influx.write_api(write_options=SYNCHRONOUS)
+
+    write_api.write(bucket=bucket, org="home", record=points)
+    
     _logger.info("power_plant_monitoring.app has finished")
 
 
