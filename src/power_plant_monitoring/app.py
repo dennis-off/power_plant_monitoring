@@ -22,10 +22,14 @@ References:
 
 import argparse
 import logging
-import sys
+import sys, os
 from logging.handlers import RotatingFileHandler
 
 import confuse
+
+import influxdb_client, os, time
+from influxdb_client import InfluxDBClient, Point, WritePrecision
+from influxdb_client.client.write_api import SYNCHRONOUS
 
 from power_plant_monitoring import __version__
 
@@ -41,23 +45,6 @@ _logger = logging.getLogger(__name__)
 # Python scripts/interactive interpreter, e.g. via
 # `from power_plant_monitoring.skeleton import fib`,
 # when using this Python module as a library.
-
-
-def fib(n):
-    """Fibonacci example function
-
-    Args:
-      n (int): integer
-
-    Returns:
-      int: n-th Fibonacci number
-    """
-    assert n > 0
-    a, b = 1, 1
-    for _i in range(n - 1):
-        a, b = b, a + b
-    return a
-
 
 # ---- CLI ----
 # The functions defined in this section are wrappers around the main Python
@@ -79,9 +66,8 @@ def parse_args(args):
     parser.add_argument(
         "--version",
         action="version",
-        version="power_plant_monitoring {ver}".format(ver=__version__),
+        version="harvester {ver}".format(ver=__version__),
     )
-    parser.add_argument(dest="n", help="n-th Fibonacci number", type=int, metavar="INT")
     parser.add_argument(
         "-v",
         "--verbose",
@@ -107,10 +93,19 @@ def setup_logging(loglevel):
     Args:
       loglevel (int): minimum loglevel for emitting messages
     """
-    logformat = "[%(asctime)s] %(levelname)s:%(name)s:%(message)s"
+    logformat = (
+        "%(asctime)s.%(msecs)03d %(levelname)s {%(module)s} [%(funcName)s] %(message)s"
+    )
     logging.basicConfig(
         level=loglevel, stream=sys.stdout, format=logformat, datefmt="%Y-%m-%d %H:%M:%S"
     )
+    file_handler = RotatingFileHandler(
+        "log/power_plant_monitoring.log", maxBytes=10000 * 1000, backupCount=500
+    )
+    formatter = logging.Formatter(logformat)
+    file_handler.setFormatter(formatter)
+
+    logging.getLogger().addHandler(file_handler)
 
 
 def main(args):
@@ -124,10 +119,41 @@ def main(args):
           (for example  ``["--verbose", "42"]``).
     """
     args = parse_args(args)
+
+    # assure log folder exists
+    os.makedirs("log", exist_ok=True)
     setup_logging(args.loglevel)
-    _logger.debug("Starting crazy calculations...")
-    print("The {}-th Fibonacci number is {}".format(args.n, fib(args.n)))
-    _logger.info("Script ends here")
+
+    _logger.debug("Starting power_plant_monitoring.app {ver} ...".format(ver=__version__))
+    
+    # load configuration
+    filename = "config.yml"
+    config = confuse.Configuration("harvester", __name__)
+    config.set_file(filename)
+
+    url = config["influxdb"]["url"].get(str)
+    org = config["influxdb"]["org"].get(str)
+    token = config["influxdb"]["token"].get(str)
+
+    _logger.debug(f"InfluxDB: {url}, Organization: {org}")
+
+    client = influxdb_client.InfluxDBClient(url=url, token=token, org=org)
+
+    bucket="monitoring"
+
+    write_api = client.write_api(write_options=SYNCHRONOUS)
+   
+    for value in range(50):
+        point = (
+            Point("measurement1")
+            .tag("tagname1", "tagvalue1")
+            .field("field1", value)
+        )
+        write_api.write(bucket=bucket, org="home", record=point)
+        time.sleep(1) # separate points by 1 second
+
+
+    _logger.info("power_plant_monitoring.app has finished")
 
 
 def run():
