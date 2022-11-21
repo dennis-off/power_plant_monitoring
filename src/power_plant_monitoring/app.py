@@ -22,7 +22,7 @@ References:
 
 import argparse
 import logging
-import sys, os, time
+import sys, os, time, datetime
 from logging.handlers import RotatingFileHandler
 
 import confuse
@@ -158,20 +158,24 @@ def main(args):
 
     bucket="monitoring"
 
-    info = growatt.read()
+    while True:
+        info = growatt.read()
 
-    now = time.time()
+        now = time.time()
 
-    points = [{
-                'time': int(now),
-                'measurement': 'growatt',
-                "fields": info
-            }]
-    
-    bucket="monitoring"
-    write_api = influx.write_api(write_options=SYNCHRONOUS)
+        point = influxdb_client.Point.from_dict(
+            {
+                'measurement': 'growattd',
+                'tags': {'location': 'home'},
+                'fields': info,
+                'time': datetime.datetime.now(),
+            },
+            influxdb_client.WritePrecision.MS)
 
-    write_api.write(bucket=bucket, org="home", record=points)
+        write_api = influx.write_api(write_options=SYNCHRONOUS)
+        write_api.write(bucket=bucket, org="home", record=point)
+
+        time.sleep(1)
     
     _logger.info("power_plant_monitoring.app has finished")
 
