@@ -55,7 +55,7 @@ class Growatt:
         self.name = name
         self.unit = unit
 
-        self.read_info()
+        #self.read_info()
 
     def read_info(self):
         row = self.client.read_holding_registers(73, unit=self.unit)

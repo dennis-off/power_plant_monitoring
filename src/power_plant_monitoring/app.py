@@ -32,6 +32,7 @@ from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 from pymodbus.client.sync import ModbusSerialClient as ModbusClient
+from pymodbus.exceptions import ModbusIOException
 
 from growatt import Growatt
 
@@ -104,12 +105,12 @@ def setup_logging(loglevel):
         level=loglevel, stream=sys.stdout, format=logformat, datefmt="%Y-%m-%d %H:%M:%S"
     )
     file_handler = RotatingFileHandler(
-        "log/power_plant_monitoring.log", maxBytes=10000 * 1000, backupCount=500
+        "log/power_plant_monitoring.log", maxBytes=10000 * 1000, backupCount=10
     )
     formatter = logging.Formatter(logformat)
     file_handler.setFormatter(formatter)
 
-    logging.getLogger().addHandler(file_handler)
+    _logger.addHandler(file_handler)
 
 
 def main(args):
@@ -159,24 +160,40 @@ def main(args):
     bucket="monitoring"
 
     while True:
-        info = growatt.read()
-
         now = time.time()
 
-        point = influxdb_client.Point.from_dict(
-            {
-                'measurement': 'growattd',
-                'tags': {'location': 'home'},
-                'fields': info,
-                'time': datetime.datetime.now(),
-            },
-            influxdb_client.WritePrecision.MS)
+        try:
+            info = growatt.read()
 
-        write_api = influx.write_api(write_options=SYNCHRONOUS)
-        write_api.write(bucket=bucket, org="home", record=point)
+            if info is not None:
+                _logger.debug(f"Data received from inverter")
+            else:
+                _logger.error(f"An error occured receiving data from inverter")
+                time.sleep(interval)
+                continue
 
-        time.sleep(1)
-    
+            point = influxdb_client.Point.from_dict(
+                {
+                    'measurement': 'growattd',
+                    'tags': {'location': 'home'},
+                    'fields': info,
+                    'time': datetime.datetime.now(),
+                },
+                influxdb_client.WritePrecision.MS)
+
+            write_api = influx.write_api(write_options=SYNCHRONOUS)
+            write_api.write(bucket=bucket, org="home", record=point)
+
+            time.sleep(interval)
+
+        except ModbusIOException as err:
+            _logger.error(err)
+            time.sleep(offline_interval)
+
+        except Exception as err:
+            _logger.error(err)
+            time.sleep(error_interval)
+
     _logger.info("power_plant_monitoring.app has finished")
 
 
